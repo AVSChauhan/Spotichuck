@@ -12,7 +12,7 @@ import LibraryPanel from "./components/LibraryPanel";
 import GeminiDJPanel from "./components/GeminiDJPanel";
 import LyricsPanel from "./components/LyricsPanel";
 import { Track, Playlist } from "./types";
-import { Music, LayoutList, Volume2, Info, Disc } from "lucide-react";
+import { Music, LayoutList, Volume2, Info, Disc, Globe, Tv, Shield, Sparkles, Loader2, ChevronUp, ChevronDown, ListMusic } from "lucide-react";
 
 export default function App() {
   // Navigation tabs states: "home" | "search" | "library" | "geminidj"
@@ -41,6 +41,9 @@ export default function App() {
   const [playMode, setPlayMode] = useState<"preview" | "youtube">("preview");
   const [loadingFullSong, setLoadingFullSong] = useState<boolean>(false);
   const [resolvedYoutubeId, setResolvedYoutubeId] = useState<string | null>(null);
+  const [musicSources, setMusicSources] = useState<any[]>([]);
+  const [activeSourceIndex, setActiveSourceIndex] = useState<number>(0);
+  const [sourcesListExpanded, setSourcesListExpanded] = useState<boolean>(false);
 
   // Player queue log
   const [playbackQueue, setPlaybackQueue] = useState<Track[]>([]);
@@ -84,26 +87,32 @@ export default function App() {
 
     // Track state handles
     const handleTimeUpdate = () => {
-      // In youtube mode, iframe handles its own clock. So only update from native if in preview mode
-      if (playMode === "preview") {
+      // If preview mode, or full song mode with direct audio file stream, update current time
+      const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+      if (playMode === "preview" || isDirect) {
         setCurrentTime(audio.currentTime);
       }
     };
 
     const handleDurationChange = () => {
+      const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
       if (playMode === "preview") {
         setDuration(audio.duration || 30);
+      } else if (isDirect) {
+        setDuration(audio.duration || currentTrack?.durationSeconds || 180);
       }
     };
 
     const handleCanPlay = () => {
-      if (isPlaying && playMode === "preview") {
+      const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+      if (isPlaying && (playMode === "preview" || isDirect)) {
         audio.play().catch((err) => console.log("Play failed dynamically:", err));
       }
     };
 
     const handleEnded = () => {
-      if (playMode === "preview") {
+      const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+      if (playMode === "preview" || isDirect) {
         handleTrackFinished();
       }
     };
@@ -123,7 +132,7 @@ export default function App() {
       audio.removeEventListener("canplay", handleCanPlay);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, [isPlaying, playMode, isMuted, volume]);
+  }, [isPlaying, playMode, isMuted, volume, musicSources, activeSourceIndex, currentTrack]);
 
   // Sync volume state changes
   useEffect(() => {
@@ -147,10 +156,11 @@ export default function App() {
     setLikedSongIds(new Set(likedList ? likedList.tracks.map((t) => t.id) : []));
   }, [playlists]);
 
-  // Handle automatic song ticking if playing YouTube video
+  // Handle automatic song ticking if playing iframe-based YouTube or widget players
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (isPlaying && playMode === "youtube") {
+    const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+    if (isPlaying && playMode === "youtube" && !isDirect) {
       timer = setInterval(() => {
         setCurrentTime((prev) => {
           if (prev >= duration) {
@@ -162,11 +172,11 @@ export default function App() {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [isPlaying, playMode, duration]);
+  }, [isPlaying, playMode, duration, musicSources, activeSourceIndex]);
 
   // Synchronize state with YouTube IFrame Player (play/pause/volume/mute)
   useEffect(() => {
-    if (playMode === "youtube" && resolvedYoutubeId) {
+    if (playMode === "youtube" && resolvedYoutubeId && resolvedYoutubeId !== "direct_embed") {
       const timeoutId = setTimeout(() => {
         const iframe = document.getElementById("youtube-player-iframe") as HTMLIFrameElement | null;
         if (iframe && iframe.contentWindow) {
@@ -227,10 +237,49 @@ export default function App() {
     }
   };
 
-  // Scrape YouTube for current song title & artist
+  // Scrape multi-source platforms (YouTube, YouTube Music, SoundCloud, Direct Web Audios)
   const resolveAndPlayYoutubeStream = async (track: Track) => {
     setLoadingFullSong(true);
     setResolvedYoutubeId(null);
+    setMusicSources([]);
+    setActiveSourceIndex(0);
+
+    try {
+      const response = await fetch(`/api/music-sources?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
+      if (!response.ok) throw new Error("Multi-source fetch failed");
+      const data = await response.json();
+      
+      if (data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
+        setMusicSources(data.sources);
+        const firstSource = data.sources[0];
+        setActiveSourceIndex(0);
+        setDuration(track.durationSeconds || 180);
+
+        if (firstSource.type === "direct") {
+          if (audioRef.current) {
+            audioRef.current.src = firstSource.url;
+            audioRef.current.load();
+            if (isPlaying) {
+              audioRef.current.play().catch((e) => console.log("Direct play autoplay failed:", e));
+            }
+          }
+        } else {
+          const match = firstSource.url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
+          if (match && match[1]) {
+            setResolvedYoutubeId(match[1]);
+          } else {
+            setResolvedYoutubeId("direct_embed");
+          }
+        }
+      } else {
+        throw new Error("No available sources returned");
+      }
+      return; // Handled within new flow!
+    } catch (newFlowErr) {
+      console.warn("New multi-source lookup failed, trying traditional fallback path:", newFlowErr);
+    }
+
+    // traditional fallback path
     try {
       const searchTerms = `${track.title} ${track.artist}`;
       const response = await fetch(`/api/youtube-search?q=${encodeURIComponent(searchTerms)}`);
@@ -255,18 +304,49 @@ export default function App() {
     }
   };
 
+  const handleSelectSource = (index: number) => {
+    if (!musicSources || !musicSources[index]) return;
+    setActiveSourceIndex(index);
+    const source = musicSources[index];
+
+    setCurrentTime(0);
+
+    if (source.type === "direct") {
+      setResolvedYoutubeId(null);
+      if (audioRef.current) {
+        audioRef.current.src = source.url;
+        audioRef.current.load();
+        if (isPlaying) {
+          audioRef.current.play().catch((err) => console.log("Direct source stream play error:", err));
+        }
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const match = source.url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
+      if (match && match[1]) {
+        setResolvedYoutubeId(match[1]);
+      } else {
+        setResolvedYoutubeId("direct_embed");
+      }
+    }
+  };
+
   // Play Pause Core Toggler
   const handlePlayPause = () => {
     if (!currentTrack) return;
     
+    const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+
     if (isPlaying) {
       setIsPlaying(false);
-      if (playMode === "preview" && audioRef.current) {
+      if ((playMode === "preview" || isDirect) && audioRef.current) {
         audioRef.current.pause();
       }
     } else {
       setIsPlaying(true);
-      if (playMode === "preview" && audioRef.current) {
+      if ((playMode === "preview" || isDirect) && audioRef.current) {
         audioRef.current.play().catch((err) => console.log(err));
       }
     }
@@ -275,7 +355,8 @@ export default function App() {
   // Custom seeking handle
   const handleSeek = (seconds: number) => {
     setCurrentTime(seconds);
-    if (playMode === "preview" && audioRef.current) {
+    const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+    if ((playMode === "preview" || isDirect) && audioRef.current) {
       audioRef.current.currentTime = seconds;
     }
   };
@@ -297,6 +378,8 @@ export default function App() {
     } else {
       // Switching to preview
       setResolvedYoutubeId(null);
+      setMusicSources([]);
+      setActiveSourceIndex(0);
       if (audioRef.current) {
         audioRef.current.src = currentTrack.previewUrl;
         audioRef.current.load();
@@ -547,26 +630,98 @@ export default function App() {
             />
           )}
 
-          {/* Floating Expandable YouTube Video Player Block */}
-          {playMode === "youtube" && resolvedYoutubeId && (
-            <div className="absolute right-6 bottom-4 w-72 h-44 bg-black border border-neutral-800 rounded-xl shadow-2xl z-40 overflow-hidden flex flex-col group animate-fade-in">
-              <div className="px-3 py-1.5 bg-neutral-950 border-b border-neutral-900 flex items-center justify-between text-[10px] text-rose-500 font-extrabold tracking-widest uppercase">
-                <span className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
-                  YouTube Visual Stream
+          {/* Floating Expandable Multi-Source Audios & Videos Board */}
+          {playMode === "youtube" && musicSources && musicSources.length > 0 && (
+            <div className={`absolute right-6 bottom-4 w-80 bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl z-40 overflow-hidden flex flex-col transition-all duration-300 animate-fade-in ${sourcesListExpanded ? "h-[320px]" : "h-[220px]"}`}>
+              {/* Header */}
+              <div className="px-3 py-2 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between text-[10px] font-extrabold tracking-widest uppercase text-neutral-300 select-none">
+                <span className="flex items-center gap-1 text-emerald-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Active: {musicSources[activeSourceIndex]?.name || "Auto Player"}
                 </span>
-                <span className="text-[9px] text-neutral-500 font-bold normal-case font-mono">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] text-neutral-500 font-mono normal-case">{formatDuration(currentTime)} / {formatDuration(duration)}</span>
+                  <button 
+                    onClick={() => setSourcesListExpanded(!sourcesListExpanded)}
+                    className="p-1 text-neutral-400 hover:text-white cursor-pointer hover:bg-neutral-800 rounded transition-colors"
+                    title="Change Music Sourcing"
+                  >
+                    {sourcesListExpanded ? (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
-              <div className="flex-1 bg-black relative">
-                <iframe
-                  id="youtube-player-iframe"
-                  src={`https://www.youtube.com/embed/${resolvedYoutubeId}?autoplay=1&controls=1&enablejsapi=1&mute=${isMuted ? 1 : 0}`}
-                  className="w-full h-full"
-                  allow="autoplay; encrypted-media"
-                  referrerPolicy="no-referrer"
-                  title="YouTube Clip player"
-                />
+
+              {/* Main player box content based on stream type */}
+              <div className="flex-1 bg-black relative overflow-hidden flex flex-col justify-center">
+                {musicSources[activeSourceIndex]?.type === "direct" ? (
+                  /* Audio file playback visuals */
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-950 p-4 text-center select-none">
+                    <div className="relative mb-2">
+                      <Disc className={`w-14 h-14 text-emerald-500 ${isPlaying ? "animate-spin" : "opacity-60"}`} style={{ animationDuration: "3s" }} />
+                      <div className="absolute top-1/2 left-1/2 w-4 h-4 bg-black rounded-full border border-neutral-700 -translate-x-1/2 -translate-y-1/2" />
+                    </div>
+                    <span className="block text-xs font-semibold text-neutral-300 text-ellipsis overflow-hidden whitespace-nowrap max-w-full">
+                      {musicSources[activeSourceIndex]?.name || "High Bandwidth Stream"}
+                    </span>
+                    <span className="block text-[9px] text-neutral-500 font-mono tracking-tight mt-0.5">
+                      Bypassing video streams with pure HTML5 audio
+                    </span>
+                  </div>
+                ) : (
+                  /* Frame playback embed */
+                  <iframe
+                    id="youtube-player-iframe"
+                    src={musicSources[activeSourceIndex]?.url + `&mute=${isMuted ? 1 : 0}`}
+                    className="w-full h-full"
+                    allow="autoplay; encrypted-media"
+                    referrerPolicy="no-referrer"
+                    title="Symphony Custom Embed Stream player"
+                  />
+                )}
               </div>
+
+              {/* Collapsed/Expanded Alternative Selector Panel */}
+              {sourcesListExpanded && (
+                <div className="h-28 bg-neutral-950 border-t border-neutral-800 overflow-y-auto p-1.5">
+                  <div className="text-[8px] uppercase tracking-wider text-neutral-505 font-extrabold px-1.5 mb-1 flex items-center justify-between text-neutral-500">
+                    <span>Available Streams ({musicSources.length})</span>
+                    <span className="normal-case font-medium text-neutral-600">Bypass any blocks on the go!</span>
+                  </div>
+                  <div className="space-y-1">
+                    {musicSources.map((src, idx) => {
+                      const isActive = idx === activeSourceIndex;
+                      return (
+                        <button
+                          key={src.id || idx}
+                          onClick={() => handleSelectSource(idx)}
+                          className={`w-full flex items-center justify-between p-1 px-2 rounded text-left text-xs transition-all cursor-pointer ${
+                            isActive 
+                              ? "bg-emerald-950/40 text-emerald-400 border border-emerald-900/55" 
+                              : "text-neutral-400 hover:text-white hover:bg-neutral-900/60 border border-transparent"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-ellipsis max-w-[180px]">
+                            {src.icon === "Youtube" && <Tv className="w-3.5 h-3.5 text-red-500" />}
+                            {src.icon === "ShieldAlert" && <Shield className="w-3.5 h-3.5 text-purple-400" />}
+                            {src.icon === "Music" && <Music className="w-3.5 h-3.5 text-rose-400" />}
+                            {src.icon === "Music4" && <Music className="w-3.5 h-3.5 text-orange-500" />}
+                            {src.icon === "Globe" && <Globe className="w-3.5 h-3.5 text-blue-400" />}
+                            {src.icon === "Sparkles" && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
+                            <span className="truncate">{src.name}</span>
+                          </span>
+                          <span className="text-[8px] font-mono uppercase opacity-60 bg-neutral-900 px-1 rounded text-neutral-400">
+                            {src.domain || "web"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </main>
