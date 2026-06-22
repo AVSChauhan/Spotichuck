@@ -17,6 +17,7 @@ import {
   Maximize2,
   Minimize2,
   Globe,
+  Users,
 } from "lucide-react";
 import { Track } from "../types";
 
@@ -41,10 +42,12 @@ interface PlayBarProps {
   onToggleLyrics: () => void;
   showQueue: boolean;
   onToggleQueue: () => void;
+  showSocialFeed?: boolean;
+  onToggleSocialFeed?: () => void;
   isLiked: boolean;
   onToggleLike: () => void;
   playMode: "preview" | "youtube";
-  onTogglePlayMode: () => void;
+  onChangePlayMode: (mode: "preview" | "youtube") => void;
   loadingFullSong: boolean;
   playbackRate: number;
   onChangePlaybackRate: (rate: number) => void;
@@ -75,10 +78,12 @@ export default function PlayBar({
   onToggleLyrics,
   showQueue,
   onToggleQueue,
+  showSocialFeed = false,
+  onToggleSocialFeed = () => {},
   isLiked,
   onToggleLike,
   playMode,
-  onTogglePlayMode,
+  onChangePlayMode,
   loadingFullSong,
   playbackRate,
   onChangePlaybackRate,
@@ -159,7 +164,7 @@ export default function PlayBar({
         {/* Toggle between Preview and Full Song */}
         <div className="flex items-center gap-1.5 mb-2.5">
           <button
-            onClick={onTogglePlayMode}
+            onClick={() => onChangePlayMode("preview")}
             disabled={!currentTrack}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase border transition-all cursor-pointer ${
               !currentTrack
@@ -168,28 +173,30 @@ export default function PlayBar({
                 ? "bg-[#1DB954] text-black border-[#1DB954] hover:bg-[#1ed760]"
                 : "bg-neutral-900 text-neutral-300 border-[#282828] hover:text-white"
             }`}
+            title="Listen to premium high-fidelity 30-second music sample"
           >
             <Music className="w-3 h-3" />
             <span>30s High-Fidelity Audio</span>
           </button>
 
           <button
-            onClick={onTogglePlayMode}
+            onClick={() => onChangePlayMode("youtube")}
             disabled={!currentTrack}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold tracking-widest uppercase border transition-all cursor-pointer relative ${
               !currentTrack
                 ? "opacity-40 cursor-not-allowed border-neutral-800 text-neutral-600"
                 : playMode === "youtube"
-                ? "bg-red-600 text-white border-red-600 hover:bg-red-500"
+                ? "bg-red-600 text-white border-red-600 hover:bg-red-500 animate-pulse"
                 : "bg-neutral-900 text-rose-500 border-rose-950 hover:text-rose-400 hover:border-rose-900"
             }`}
+            title="Unlock continuous play of full-track video and media files"
           >
             {loadingFullSong ? (
               <Loader2 className="w-3 h-3 animate-spin text-white" />
             ) : (
               <Tv className="w-3 h-3" />
             )}
-            <span>Full Song (YouTube)</span>
+            <span>Full Song</span>
             {currentTrack && !loadingFullSong && playMode !== "youtube" && (
               <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[7px] px-1 rounded-full animate-bounce">
                 Full
@@ -329,17 +336,29 @@ export default function PlayBar({
           <ListMusic className="w-4.5 h-4.5" />
         </button>
 
-        {playMode === "youtube" && musicSources && musicSources.length > 0 && (
+         <button
+          onClick={onToggleSocialFeed}
+          className={`p-2 rounded-full cursor-pointer transition-colors ${
+            showSocialFeed
+              ? "text-[#1DB954] bg-[#282828] border border-[#1DB954]/20"
+              : "text-neutral-400 hover:text-white"
+          }`}
+          title="Friend Activity (Spotify Social Feed)"
+        >
+          <Users className="w-4.5 h-4.5" />
+        </button>
+
+        {musicSources && musicSources.length > 0 && (
           <button
             onClick={onToggleSourcesExpanded}
             className={`p-2 rounded-full cursor-pointer transition-colors relative flex items-center justify-center ${
               sourcesListExpanded
-                ? "text-emerald-400 bg-neutral-800 border border-emerald-500/20"
+                ? "text-emerald-400 bg-neutral-800 border border-emerald-500/20 animate-pulse"
                 : "text-neutral-400 hover:text-white"
             }`}
-            title="Sourcing & Stream Bypass Selector"
+            title="Music Sourcing & Stream Selector"
           >
-            <Globe className="w-4.5 h-4.5" />
+            <Globe className="w-4.5 h-4.5 text-emerald-400" />
             <span className="absolute -top-1 -right-1 bg-[#1DB954] text-black text-[7px] font-extrabold w-3.5 h-3.5 rounded-full flex items-center justify-center">
               {musicSources.length}
             </span>

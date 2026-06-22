@@ -222,6 +222,64 @@ export default function HomePanel({
         </div>
       )}
 
+      {/* Spotify Signature Browse All Genres & Moods Grid */}
+      <div className="mt-12 mb-8 select-none">
+        <h2 className="text-2xl font-extrabold tracking-tight text-white mb-2">
+          Browse All Genres & Moods
+        </h2>
+        <p className="text-xs text-neutral-400 font-semibold mb-6">
+          Explore curated playlists for different moods and contexts. Click to instantly queue relevant tunes!
+        </p>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          {[
+            {
+              name: "Chill & Lofi",
+              term: "lofi lounge chillout quiet",
+              bg: "from-[#2b5c8f] to-[#4c8fd4]",
+              emoji: "☕"
+            },
+            {
+              name: "Gym Boost",
+              term: "workout power fitness motivation",
+              bg: "from-[#b02222] to-[#f45c43]",
+              emoji: "⚡"
+            },
+            {
+              name: "Happy Beats",
+              term: "happy summer pool dynamic pop",
+              bg: "from-[#e65c00] to-[#f9d423]",
+              emoji: "☀️"
+            },
+            {
+              name: "Deep Focus",
+              term: "focus classical instrumental brain coding",
+              bg: "from-[#0575e6] to-[#00f260]",
+              emoji: "💻"
+            },
+            {
+              name: "Cosmic Trip",
+              term: "indie ambient cinematic slow space sad",
+              bg: "from-[#8a2387] to-[#e94057]",
+              emoji: "🌌"
+            }
+          ].map((cat, i) => (
+            <div
+              key={i}
+              onClick={() => handleQuickGridClick({ term: cat.term })}
+              className={`h-32 bg-gradient-to-br ${cat.bg} hover:scale-[1.03] active:scale-95 transition-all p-4 rounded-xl cursor-pointer relative overflow-hidden group border border-white/5 shadow-md`}
+            >
+              <span className="font-extrabold text-base text-white tracking-tight break-words pr-4 block">
+                {cat.name}
+              </span>
+              <div className="absolute -bottom-2 -right-4 text-6xl opacity-45 transform rotate-12 group-hover:-translate-x-2 group-hover:-translate-y-1 transition-transform duration-300 pointer-events-none">
+                {cat.emoji}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Sparkles advertising sidebar features */}
       <div className="mt-14 bg-gradient-to-r from-[#181818] via-[#242424] to-[#121212] border border-[#282828]/40 p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl relative overflow-hidden select-none">
         {/* Cassette vector design backdrop */}

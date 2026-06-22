@@ -11,6 +11,7 @@ import SearchPanel from "./components/SearchPanel";
 import LibraryPanel from "./components/LibraryPanel";
 import GeminiDJPanel from "./components/GeminiDJPanel";
 import LyricsPanel from "./components/LyricsPanel";
+import FriendActivityPanel from "./components/FriendActivityPanel";
 import { Track, Playlist } from "./types";
 import { Music, LayoutList, Volume2, Info, Disc, Globe, Tv, Shield, Sparkles, Loader2, ChevronUp, ChevronDown, ListMusic } from "lucide-react";
 
@@ -36,6 +37,7 @@ export default function App() {
   // Panel overlays toggles
   const [showLyrics, setShowLyrics] = useState<boolean>(false);
   const [showQueue, setShowQueue] = useState<boolean>(false);
+  const [showSocialFeed, setShowSocialFeed] = useState<boolean>(false);
 
   // Playback Mode: "preview" (native 30s premium) or "youtube" (full track video stream)
   const [playMode, setPlayMode] = useState<"preview" | "youtube">("preview");
@@ -200,6 +202,65 @@ export default function App() {
     }
   }, [isPlaying, playMode, resolvedYoutubeId, volume, isMuted]);
 
+  // Background fetch helper to guarantee source selector starts immediately
+  const fetchBackgroundMusicSources = async (track: Track) => {
+    const query = `${track.title} ${track.artist}`.trim();
+    const defaultSources = [
+      {
+        id: "preview-cdn",
+        name: "30s Premium Preview (Spotify Link)",
+        type: "direct",
+        url: track.previewUrl,
+        domain: "spotify.com",
+        icon: "Music"
+      },
+      {
+        id: "youtube-auto-search",
+        name: "YouTube Intelligent Search Embed",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Sparkles"
+      }
+    ];
+
+    setMusicSources(defaultSources);
+    if (playMode === "preview") {
+      setActiveSourceIndex(0);
+    } else {
+      setActiveSourceIndex(1);
+    }
+
+    try {
+      const response = await fetch(`/api/music-sources?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
+      if (!response.ok) throw new Error("Multi-source fetch failed");
+      const data = await response.json();
+      
+      const apiSources = (data.sources || []).filter((s: any) => s.id !== "preview-cdn");
+      const combined = [
+        {
+          id: "preview-cdn",
+          name: "30s Premium Preview (Spotify Link)",
+          type: "direct",
+          url: track.previewUrl,
+          domain: "spotify.com",
+          icon: "Music"
+        },
+        ...apiSources
+      ];
+      
+      setMusicSources(combined);
+      
+      if (playMode === "preview") {
+        setActiveSourceIndex(0);
+      } else {
+        setActiveSourceIndex(1);
+      }
+    } catch (err) {
+      console.warn("Background sources fetch failed, staying with defaults:", err);
+    }
+  };
+
   // Trigger song change action
   const handlePlayTrack = async (track: Track) => {
     // 1. Pause existing preview
@@ -223,7 +284,9 @@ export default function App() {
       setCurrentQueueIdx(newQueue.length - 1);
     }
 
-    // Handle initial preview setup
+    // Load available source channels in the background so selectors operate immediately!
+    await fetchBackgroundMusicSources(track);
+
     if (playMode === "preview") {
       if (audioRef.current) {
         audioRef.current.src = track.previewUrl;
@@ -241,65 +304,77 @@ export default function App() {
   const resolveAndPlayYoutubeStream = async (track: Track) => {
     setLoadingFullSong(true);
     setResolvedYoutubeId(null);
-    setMusicSources([]);
-    setActiveSourceIndex(0);
 
     try {
       const response = await fetch(`/api/music-sources?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
       if (!response.ok) throw new Error("Multi-source fetch failed");
       const data = await response.json();
       
-      if (data.sources && Array.isArray(data.sources) && data.sources.length > 0) {
-        setMusicSources(data.sources);
-        const firstSource = data.sources[0];
-        setActiveSourceIndex(0);
-        setDuration(track.durationSeconds || 180);
+      const apiSources = (data.sources || []).filter((s: any) => s.id !== "preview-cdn");
+      const combined = [
+        {
+          id: "preview-cdn",
+          name: "30s Premium Preview (Spotify Link)",
+          type: "direct",
+          url: track.previewUrl,
+          domain: "spotify.com",
+          icon: "Music"
+        },
+        ...apiSources
+      ];
+      
+      setMusicSources(combined);
+      setDuration(track.durationSeconds || 180);
 
-        if (firstSource.type === "direct") {
-          if (audioRef.current) {
-            audioRef.current.src = firstSource.url;
-            audioRef.current.load();
-            if (isPlaying) {
-              audioRef.current.play().catch((e) => console.log("Direct play autoplay failed:", e));
-            }
-          }
-        } else {
-          const match = firstSource.url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
-          if (match && match[1]) {
-            setResolvedYoutubeId(match[1]);
-          } else {
-            setResolvedYoutubeId("direct_embed");
+      // Select first full song source (index 1)
+      const firstFullSource = combined[1] || combined[0];
+      const activeIdx = combined.indexOf(firstFullSource);
+      setActiveSourceIndex(activeIdx);
+
+      if (firstFullSource.type === "direct") {
+        if (audioRef.current) {
+          audioRef.current.src = firstFullSource.url;
+          audioRef.current.load();
+          if (isPlaying) {
+            audioRef.current.play().catch((e) => console.log("Direct play failed:", e));
           }
         }
       } else {
-        throw new Error("No available sources returned");
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        const match = firstFullSource.url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
+        if (match && match[1]) {
+          setResolvedYoutubeId(match[1]);
+        } else {
+          setResolvedYoutubeId("direct_embed");
+        }
       }
-      setLoadingFullSong(false);
-      return; // Handled within new flow!
     } catch (newFlowErr) {
-      console.warn("New multi-source lookup failed, trying traditional fallback path:", newFlowErr);
-    }
-
-    // traditional fallback path
-    try {
-      const searchTerms = `${track.title} ${track.artist}`;
-      const response = await fetch(`/api/youtube-search?q=${encodeURIComponent(searchTerms)}`);
-      if (!response.ok) throw new Error("Scrape failed");
-      const data = await response.json();
-      
-      setResolvedYoutubeId(data.videoId);
-      setDuration(track.durationSeconds || 180); // Fallback estimate
-    } catch (err) {
-      console.error("YouTube stream resolve failed:", err);
-      // Fallback: stay in preview mode
-      setPlayMode("preview");
-      if (audioRef.current) {
-        audioRef.current.src = track.previewUrl;
-        audioRef.current.load();
-        audioRef.current.play().catch((e) => console.log(e));
-      }
-      setDuration(30);
-      alert("Uh oh! Standard full-track video scrape is currently busy. Reverting back to lightning fast preview stream!");
+      console.warn("Lookup failed, activating bulletproof search search embed:", newFlowErr);
+      const query = `${track.title} ${track.artist}`.trim();
+      const fallback = [
+        {
+          id: "preview-cdn",
+          name: "30s Premium Preview (Spotify Link)",
+          type: "direct",
+          url: track.previewUrl,
+          domain: "spotify.com",
+          icon: "Music"
+        },
+        {
+          id: "youtube-auto-search",
+          name: "YouTube Intelligent Search Embed",
+          type: "iframe",
+          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
+          domain: "youtube.com",
+          icon: "Sparkles"
+        }
+      ];
+      setMusicSources(fallback);
+      setActiveSourceIndex(1);
+      setResolvedYoutubeId("youtube-auto-search");
+      setDuration(track.durationSeconds || 180);
     } finally {
       setLoadingFullSong(false);
     }
@@ -312,24 +387,39 @@ export default function App() {
 
     setCurrentTime(0);
 
-    if (source.type === "direct") {
+    if (source.id === "preview-cdn") {
+      setPlayMode("preview");
       setResolvedYoutubeId(null);
       if (audioRef.current) {
         audioRef.current.src = source.url;
         audioRef.current.load();
         if (isPlaying) {
-          audioRef.current.play().catch((err) => console.log("Direct source stream play error:", err));
+          audioRef.current.play().catch((err) => console.log("Preview switch error:", err));
         }
       }
+      setDuration(30);
     } else {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      const match = source.url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
-      if (match && match[1]) {
-        setResolvedYoutubeId(match[1]);
+      setPlayMode("youtube");
+      setDuration(currentTrack?.durationSeconds || 180);
+      if (source.type === "direct") {
+        setResolvedYoutubeId(null);
+        if (audioRef.current) {
+          audioRef.current.src = source.url;
+          audioRef.current.load();
+          if (isPlaying) {
+            audioRef.current.play().catch((err) => console.log("Direct stream play error:", err));
+          }
+        }
       } else {
-        setResolvedYoutubeId("direct_embed");
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        const match = source.url.match(/\/embed\/([A-Za-z0-9_-]{11})/);
+        if (match && match[1]) {
+          setResolvedYoutubeId(match[1]);
+        } else {
+          setResolvedYoutubeId("direct_embed");
+        }
       }
     }
   };
@@ -362,11 +452,11 @@ export default function App() {
     }
   };
 
-  // Toggle modes: Preview vs YouTube
-  const handleTogglePlayMode = async () => {
+  // Absolute mode settings: Preview vs Full Song
+  const handleChangePlayMode = async (nextMode: "preview" | "youtube") => {
     if (!currentTrack) return;
-    
-    const nextMode = playMode === "preview" ? "youtube" : "preview";
+    if (playMode === nextMode) return;
+
     setPlayMode(nextMode);
     setCurrentTime(0);
 
@@ -375,20 +465,14 @@ export default function App() {
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      await resolveAndPlayYoutubeStream(currentTrack);
+      if (musicSources && musicSources.length > 1) {
+        handleSelectSource(1);
+      } else {
+        await resolveAndPlayYoutubeStream(currentTrack);
+      }
     } else {
       // Switching to preview
-      setResolvedYoutubeId(null);
-      setMusicSources([]);
-      setActiveSourceIndex(0);
-      if (audioRef.current) {
-        audioRef.current.src = currentTrack.previewUrl;
-        audioRef.current.load();
-        if (isPlaying) {
-          audioRef.current.play().catch((e) => console.log(e));
-        }
-      }
-      setDuration(30);
+      handleSelectSource(0);
     }
   };
 
@@ -632,7 +716,7 @@ export default function App() {
           )}
 
           {/* Floating Expandable Multi-Source Audios & Videos Board */}
-          {playMode === "youtube" && musicSources && musicSources.length > 0 && (
+          {musicSources && musicSources.length > 0 && (
             <div className={`absolute right-6 bottom-4 w-80 bg-neutral-950 border border-neutral-800 rounded-xl shadow-2xl z-40 overflow-hidden flex flex-col transition-all duration-300 animate-fade-in ${sourcesListExpanded ? "h-[320px]" : "h-[220px]"}`}>
               {/* Header */}
               <div className="px-3 py-2 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between text-[10px] font-extrabold tracking-widest uppercase text-neutral-300 select-none">
@@ -726,6 +810,18 @@ export default function App() {
             </div>
           )}
         </main>
+
+        {/* Right Side Social Feed Friend Activity View Panel */}
+        {showSocialFeed && (
+          <div className="w-80 h-full border-l border-[#282828] flex-shrink-0 animate-fade-in relative z-20 font-sans">
+            <FriendActivityPanel
+              currentTrack={currentTrack}
+              isPlaying={isPlaying}
+              onClose={() => setShowSocialFeed(false)}
+              onPlayTrack={(t) => handlePlayTrack(t)}
+            />
+          </div>
+        )}
 
         {/* Right Side Lyrics Overlays Column Panel */}
         {showLyrics && (
@@ -857,7 +953,7 @@ export default function App() {
           }
         }}
         playMode={playMode}
-        onTogglePlayMode={handleTogglePlayMode}
+        onChangePlayMode={handleChangePlayMode}
         loadingFullSong={loadingFullSong}
         playbackRate={playbackRate}
         onChangePlaybackRate={(rate) => setPlaybackRate(rate)}
