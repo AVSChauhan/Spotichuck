@@ -1,0 +1,6 @@
+{
+  "name": "Music Streaming Player",
+  "description": "A Spotify-like music streaming application that allows searching for and playing any song available, complete with curated playlists, artist searches, scrolling lyrics, and an AI Music DJ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

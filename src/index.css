@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom scrollbar to match Spotify dark mode */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #121212;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2b2b2b;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3e3e3e;
+}
+
+/* Custom animation for pulsating vinyl / equalizer bars */
+@keyframes eq-pulse {
+  0%, 100% { height: 4px; }
+  50% { height: 18px; }
+}
+
+.eq-bar-1 { animation: eq-pulse 0.8s ease-in-out infinite; }
+.eq-bar-2 { animation: eq-pulse 0.5s ease-in-out infinite 0.15s; }
+.eq-bar-3 { animation: eq-pulse 0.7s ease-in-out infinite 0.3s; }
+.eq-bar-4 { animation: eq-pulse 0.6s ease-in-out infinite 0.1s; }
+
