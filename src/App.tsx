@@ -134,7 +134,22 @@ export default function App() {
       audio.removeEventListener("canplay", handleCanPlay);
       audio.removeEventListener("ended", handleEnded);
     };
-  }, [isPlaying, playMode, isMuted, volume, musicSources, activeSourceIndex, currentTrack]);
+  }, [musicSources, activeSourceIndex, currentTrack]);
+
+  // Sync play states of direct HTML5 audio (preview or direct audio streams)
+  useEffect(() => {
+    if (!audioRef.current) return;
+    const isDirect = playMode === "youtube" && musicSources[activeSourceIndex]?.type === "direct";
+    if (playMode === "preview" || isDirect) {
+      if (isPlaying) {
+        audioRef.current.play().catch((err) => console.log("Audio play failed dynamically:", err));
+      } else {
+        audioRef.current.pause();
+      }
+    } else {
+      audioRef.current.pause();
+    }
+  }, [isPlaying, playMode, musicSources, activeSourceIndex]);
 
   // Sync volume state changes
   useEffect(() => {
@@ -178,7 +193,7 @@ export default function App() {
 
   // Synchronize state with YouTube IFrame Player (play/pause/volume/mute)
   useEffect(() => {
-    if (playMode === "youtube" && resolvedYoutubeId && resolvedYoutubeId !== "direct_embed") {
+    if (playMode === "youtube" && resolvedYoutubeId) {
       const timeoutId = setTimeout(() => {
         const iframe = document.getElementById("youtube-player-iframe") as HTMLIFrameElement | null;
         if (iframe && iframe.contentWindow) {
@@ -200,7 +215,7 @@ export default function App() {
       }, 300);
       return () => clearTimeout(timeoutId);
     }
-  }, [isPlaying, playMode, resolvedYoutubeId, volume, isMuted]);
+  }, [isPlaying, playMode, resolvedYoutubeId, volume, isMuted, activeSourceIndex]);
 
   // Background fetch helper to guarantee source selector starts immediately
   const fetchBackgroundMusicSources = async (track: Track) => {
@@ -221,6 +236,38 @@ export default function App() {
         url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
         domain: "youtube.com",
         icon: "Sparkles"
+      },
+      {
+        id: "youtube-music-search",
+        name: "YouTube Music High-Quality Embed",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "music.youtube.com",
+        icon: "Music"
+      },
+      {
+        id: "youtube-live-performance",
+        name: "YouTube Live Performance",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Tv"
+      },
+      {
+        id: "youtube-karaoke",
+        name: "YouTube Karaoke & Instrumental",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Sparkles"
+      },
+      {
+        id: "youtube-lyric-video",
+        name: "YouTube Lyric Video Clip",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official lyric video")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Youtube"
       }
     ];
 
@@ -254,7 +301,8 @@ export default function App() {
       if (playMode === "preview") {
         setActiveSourceIndex(0);
       } else {
-        setActiveSourceIndex(1);
+        // If there is an active index, make sure we keep it, otherwise fall back to 1
+        setActiveSourceIndex((prev) => (prev < combined.length ? prev : 1));
       }
     } catch (err) {
       console.warn("Background sources fetch failed, staying with defaults:", err);
@@ -369,6 +417,38 @@ export default function App() {
           url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
           domain: "youtube.com",
           icon: "Sparkles"
+        },
+        {
+          id: "youtube-music-search",
+          name: "YouTube Music High-Quality Embed",
+          type: "iframe",
+          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
+          domain: "music.youtube.com",
+          icon: "Music"
+        },
+        {
+          id: "youtube-live-performance",
+          name: "YouTube Live Performance",
+          type: "iframe",
+          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1&enablejsapi=1`,
+          domain: "youtube.com",
+          icon: "Tv"
+        },
+        {
+          id: "youtube-karaoke",
+          name: "YouTube Karaoke & Instrumental",
+          type: "iframe",
+          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
+          domain: "youtube.com",
+          icon: "Sparkles"
+        },
+        {
+          id: "youtube-lyric-video",
+          name: "YouTube Lyric Video Clip",
+          type: "iframe",
+          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official lyric video")}&autoplay=1&controls=1&enablejsapi=1`,
+          domain: "youtube.com",
+          icon: "Youtube"
         }
       ];
       setMusicSources(fallback);
@@ -760,7 +840,9 @@ export default function App() {
                   /* Frame playback embed */
                   <iframe
                     id="youtube-player-iframe"
-                    src={musicSources[activeSourceIndex]?.url + `&mute=${isMuted ? 1 : 0}`}
+                    src={`${musicSources[activeSourceIndex]?.url || ""}${
+                      (musicSources[activeSourceIndex]?.url || "").includes("?") ? "&" : "?"
+                    }mute=${isMuted ? 1 : 0}&enablejsapi=1`}
                     className="w-full h-full"
                     allow="autoplay; encrypted-media"
                     referrerPolicy="no-referrer"

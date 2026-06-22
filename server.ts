@@ -409,7 +409,7 @@ app.get("/api/music-sources", async (req, res) => {
     id: "youtube-music-search",
     name: "YouTube Music High-Quality Embed",
     type: "iframe",
-    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1`,
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
     domain: "music.youtube.com",
     icon: "Music"
   });
@@ -419,7 +419,7 @@ app.get("/api/music-sources", async (req, res) => {
     id: "youtube-live-performance",
     name: "YouTube Live Performance",
     type: "iframe",
-    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1`,
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1&enablejsapi=1`,
     domain: "youtube.com",
     icon: "Tv"
   });
@@ -429,7 +429,7 @@ app.get("/api/music-sources", async (req, res) => {
     id: "youtube-karaoke",
     name: "YouTube Karaoke & Instrumental",
     type: "iframe",
-    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1`,
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
     domain: "youtube.com",
     icon: "Sparkles"
   });
