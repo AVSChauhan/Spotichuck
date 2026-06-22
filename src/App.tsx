@@ -274,6 +274,7 @@ export default function App() {
       } else {
         throw new Error("No available sources returned");
       }
+      setLoadingFullSong(false);
       return; // Handled within new flow!
     } catch (newFlowErr) {
       console.warn("New multi-source lookup failed, trying traditional fallback path:", newFlowErr);
@@ -860,6 +861,10 @@ export default function App() {
         loadingFullSong={loadingFullSong}
         playbackRate={playbackRate}
         onChangePlaybackRate={(rate) => setPlaybackRate(rate)}
+        musicSources={musicSources}
+        activeSourceIndex={activeSourceIndex}
+        sourcesListExpanded={sourcesListExpanded}
+        onToggleSourcesExpanded={() => setSourcesListExpanded(!sourcesListExpanded)}
       />
     </div>
   );

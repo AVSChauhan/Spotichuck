@@ -16,6 +16,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  Globe,
 } from "lucide-react";
 import { Track } from "../types";
 
@@ -47,6 +48,10 @@ interface PlayBarProps {
   loadingFullSong: boolean;
   playbackRate: number;
   onChangePlaybackRate: (rate: number) => void;
+  musicSources?: any[];
+  activeSourceIndex?: number;
+  sourcesListExpanded?: boolean;
+  onToggleSourcesExpanded?: () => void;
 }
 
 export default function PlayBar({
@@ -77,6 +82,10 @@ export default function PlayBar({
   loadingFullSong,
   playbackRate,
   onChangePlaybackRate,
+  musicSources = [],
+  activeSourceIndex = 0,
+  sourcesListExpanded = false,
+  onToggleSourcesExpanded = () => {},
 }: PlayBarProps) {
   
   // Format seconds to MM:SS format
@@ -319,6 +328,23 @@ export default function PlayBar({
         >
           <ListMusic className="w-4.5 h-4.5" />
         </button>
+
+        {playMode === "youtube" && musicSources && musicSources.length > 0 && (
+          <button
+            onClick={onToggleSourcesExpanded}
+            className={`p-2 rounded-full cursor-pointer transition-colors relative flex items-center justify-center ${
+              sourcesListExpanded
+                ? "text-emerald-400 bg-neutral-800 border border-emerald-500/20"
+                : "text-neutral-400 hover:text-white"
+            }`}
+            title="Sourcing & Stream Bypass Selector"
+          >
+            <Globe className="w-4.5 h-4.5" />
+            <span className="absolute -top-1 -right-1 bg-[#1DB954] text-black text-[7px] font-extrabold w-3.5 h-3.5 rounded-full flex items-center justify-center">
+              {musicSources.length}
+            </span>
+          </button>
+        )}
 
         {/* Volume section */}
         <div className="flex items-center gap-2 group max-w-[120px]">

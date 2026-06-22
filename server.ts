@@ -67,13 +67,13 @@ async function searchYouTubeWithAI(query: string): Promise<string | null> {
 async function searchYouTubeDuckDuckGo(query: string): Promise<string | null> {
   try {
     const url = `https://html.duckduckgo.com/html/?q=site:youtube.com+${encodeURIComponent(query + " official audio")}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       }
-    });
+    }, 2000);
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:v=|v%3D)([A-Za-z0-9_-]{11})/);
@@ -93,11 +93,11 @@ async function searchYouTubeDuckDuckGo(query: string): Promise<string | null> {
 async function searchYouTubeBing(query: string): Promise<string | null> {
   try {
     const url = `https://www.bing.com/search?q=site:youtube.com+${encodeURIComponent(query + " official audio")}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }
-    });
+    }, 2000);
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:v=|v%3D)([A-Za-z0-9_-]{11})/);
@@ -165,11 +165,11 @@ async function searchYouTubeMusic(title: string, artist: string): Promise<string
   try {
     const query = `${title} ${artist} official music video`;
     const url = `https://html.duckduckgo.com/html/?q=site:music.youtube.com+${encodeURIComponent(query)}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }
-    });
+    }, 2000);
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:v=|v%3D)([A-Za-z0-9_-]{11})/);
@@ -190,12 +190,12 @@ async function searchSoundCloud(title: string, artist: string): Promise<{ url: s
   try {
     const query = `${title} ${artist} official`;
     const url = `https://html.duckduckgo.com/html/?q=site:soundcloud.com+${encodeURIComponent(query)}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
       }
-    });
+    }, 2000);
     if (res.ok) {
       const html = await res.text();
       // Match soundcloud.com/artist/track links
@@ -231,7 +231,7 @@ async function searchFreeAudioFiles(title: string, artist: string): Promise<Arra
   try {
     const queryStr = `${title} ${artist}`;
     const archiveUrl = `https://archive.org/advancedsearch.php?q=title:(${encodeURIComponent(queryStr)})+AND+mediatype:(audio)&fl[]=identifier,title&sort[]=downloads+desc&output=json&rows=3`;
-    const resArchive = await fetch(archiveUrl);
+    const resArchive = await fetchWithTimeout(archiveUrl, {}, 2000);
     if (resArchive.ok) {
       const data = await resArchive.json();
       const docs = data?.response?.docs;
@@ -260,11 +260,11 @@ async function searchFreeAudioFiles(title: string, artist: string): Promise<Arra
   try {
     const qStr = `"${title} ${artist}" full audio mp4 free OR "mp3"`;
     const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(qStr)}`;
-    const res = await fetch(ddgUrl, {
+    const res = await fetchWithTimeout(ddgUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }
-    });
+    }, 2000);
     if (res.ok) {
       const html = await res.text();
       const regex = /(https?:\/\/[^\s"'`<>]+?\.(?:mp3|mp4|ogg|wav))/gi;
@@ -330,12 +330,12 @@ async function searchYouTube(query: string): Promise<string | null> {
   // Tier 4: Direct YouTube scrapers
   try {
     const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + " official audio")}`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
       },
-    });
+    }, 2000);
     if (res.ok) {
       const html = await res.text();
       
@@ -384,6 +384,16 @@ app.get("/api/music-sources", async (req, res) => {
   const webFiles = results[3].status === "fulfilled" ? (results[3].value as any[]) : [];
 
   const sources: any[] = [];
+
+  // Add bulletproof instantaneous Smart Search Playback stream
+  sources.push({
+    id: "youtube-auto-search",
+    name: "YouTube Intelligent Search Embed",
+    type: "iframe",
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
+    domain: "youtube.com",
+    icon: "Sparkles"
+  });
 
   // Add standard YouTube video if found
   if (youtubeId) {
