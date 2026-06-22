@@ -281,31 +281,36 @@ export default function App() {
     try {
       const response = await fetch(`/api/music-sources?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
       if (!response.ok) throw new Error("Multi-source fetch failed");
-      const data = await response.json();
       
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Response is not JSON (likely Vercel SPA index.html routing redirect)");
+      }
+      
+      const data = await response.json();
       const apiSources = (data.sources || []).filter((s: any) => s.id !== "preview-cdn");
-      const combined = [
-        {
-          id: "preview-cdn",
-          name: "30s Premium Preview (Spotify Link)",
-          type: "direct",
-          url: track.previewUrl,
-          domain: "spotify.com",
-          icon: "Music"
-        },
-        ...apiSources
-      ];
+      
+      // Perform an intelligent merge: keep all 6 bulletproof client options, override or insert API results
+      const combined = [...defaultSources];
+      apiSources.forEach((apiSrc: any) => {
+        const existingIdx = combined.findIndex((item) => item.id === apiSrc.id);
+        if (existingIdx >= 0) {
+          combined[existingIdx] = apiSrc;
+        } else {
+          // Push premium matched YouTube/Soundcloud links right after Spotify Preview
+          combined.splice(1, 0, apiSrc);
+        }
+      });
       
       setMusicSources(combined);
       
       if (playMode === "preview") {
         setActiveSourceIndex(0);
       } else {
-        // If there is an active index, make sure we keep it, otherwise fall back to 1
         setActiveSourceIndex((prev) => (prev < combined.length ? prev : 1));
       }
     } catch (err) {
-      console.warn("Background sources fetch failed, staying with defaults:", err);
+      console.warn("Background sources fetch failed, staying with bulletproof client defaults:", err);
     }
   };
 
@@ -353,23 +358,81 @@ export default function App() {
     setLoadingFullSong(true);
     setResolvedYoutubeId(null);
 
+    const query = `${track.title} ${track.artist}`.trim();
+    const fallbackList = [
+      {
+        id: "preview-cdn",
+        name: "30s Premium Preview (Spotify Link)",
+        type: "direct",
+        url: track.previewUrl,
+        domain: "spotify.com",
+        icon: "Music"
+      },
+      {
+        id: "youtube-auto-search",
+        name: "YouTube Intelligent Search Embed",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Sparkles"
+      },
+      {
+        id: "youtube-music-search",
+        name: "YouTube Music High-Quality Embed",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "music.youtube.com",
+        icon: "Music"
+      },
+      {
+        id: "youtube-live-performance",
+        name: "YouTube Live Performance",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Tv"
+      },
+      {
+        id: "youtube-karaoke",
+        name: "YouTube Karaoke & Instrumental",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Sparkles"
+      },
+      {
+        id: "youtube-lyric-video",
+        name: "YouTube Lyric Video Clip",
+        type: "iframe",
+        url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official lyric video")}&autoplay=1&controls=1&enablejsapi=1`,
+        domain: "youtube.com",
+        icon: "Youtube"
+      }
+    ];
+
     try {
       const response = await fetch(`/api/music-sources?title=${encodeURIComponent(track.title)}&artist=${encodeURIComponent(track.artist)}`);
       if (!response.ok) throw new Error("Multi-source fetch failed");
-      const data = await response.json();
       
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Response is not JSON (likely Vercel SPA index.html routing redirect)");
+      }
+
+      const data = await response.json();
       const apiSources = (data.sources || []).filter((s: any) => s.id !== "preview-cdn");
-      const combined = [
-        {
-          id: "preview-cdn",
-          name: "30s Premium Preview (Spotify Link)",
-          type: "direct",
-          url: track.previewUrl,
-          domain: "spotify.com",
-          icon: "Music"
-        },
-        ...apiSources
-      ];
+      
+      // Perform an intelligent merge: keep all 6 bulletproof client options, override or insert API results
+      const combined = [...fallbackList];
+      apiSources.forEach((apiSrc: any) => {
+        const existingIdx = combined.findIndex((item) => item.id === apiSrc.id);
+        if (existingIdx >= 0) {
+          combined[existingIdx] = apiSrc;
+        } else {
+          // Push premium matched YouTube/Soundcloud links right after Spotify Preview
+          combined.splice(1, 0, apiSrc);
+        }
+      });
       
       setMusicSources(combined);
       setDuration(track.durationSeconds || 180);
@@ -399,59 +462,8 @@ export default function App() {
         }
       }
     } catch (newFlowErr) {
-      console.warn("Lookup failed, activating bulletproof search search embed:", newFlowErr);
-      const query = `${track.title} ${track.artist}`.trim();
-      const fallback = [
-        {
-          id: "preview-cdn",
-          name: "30s Premium Preview (Spotify Link)",
-          type: "direct",
-          url: track.previewUrl,
-          domain: "spotify.com",
-          icon: "Music"
-        },
-        {
-          id: "youtube-auto-search",
-          name: "YouTube Intelligent Search Embed",
-          type: "iframe",
-          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official audio")}&autoplay=1&controls=1&enablejsapi=1`,
-          domain: "youtube.com",
-          icon: "Sparkles"
-        },
-        {
-          id: "youtube-music-search",
-          name: "YouTube Music High-Quality Embed",
-          type: "iframe",
-          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
-          domain: "music.youtube.com",
-          icon: "Music"
-        },
-        {
-          id: "youtube-live-performance",
-          name: "YouTube Live Performance",
-          type: "iframe",
-          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1&enablejsapi=1`,
-          domain: "youtube.com",
-          icon: "Tv"
-        },
-        {
-          id: "youtube-karaoke",
-          name: "YouTube Karaoke & Instrumental",
-          type: "iframe",
-          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1&enablejsapi=1`,
-          domain: "youtube.com",
-          icon: "Sparkles"
-        },
-        {
-          id: "youtube-lyric-video",
-          name: "YouTube Lyric Video Clip",
-          type: "iframe",
-          url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " official lyric video")}&autoplay=1&controls=1&enablejsapi=1`,
-          domain: "youtube.com",
-          icon: "Youtube"
-        }
-      ];
-      setMusicSources(fallback);
+      console.warn("Lookup failed, activating bulletproof search search embed on client side:", newFlowErr);
+      setMusicSources(fallbackList);
       setActiveSourceIndex(1);
       setResolvedYoutubeId("youtube-auto-search");
       setDuration(track.durationSeconds || 180);
@@ -838,16 +850,22 @@ export default function App() {
                   </div>
                 ) : (
                   /* Frame playback embed */
-                  <iframe
-                    id="youtube-player-iframe"
-                    src={`${musicSources[activeSourceIndex]?.url || ""}${
-                      (musicSources[activeSourceIndex]?.url || "").includes("?") ? "&" : "?"
-                    }mute=${isMuted ? 1 : 0}&enablejsapi=1`}
-                    className="w-full h-full"
-                    allow="autoplay; encrypted-media"
-                    referrerPolicy="no-referrer"
-                    title="Symphony Custom Embed Stream player"
-                  />
+                  <>
+                    <iframe
+                      id="youtube-player-iframe"
+                      src={`${musicSources[activeSourceIndex]?.url || ""}${
+                        (musicSources[activeSourceIndex]?.url || "").includes("?") ? "&" : "?"
+                      }mute=${isMuted ? 1 : 0}&enablejsapi=1`}
+                      className="w-full h-full"
+                      allow="autoplay; encrypted-media"
+                      referrerPolicy="no-referrer"
+                      title="Symphony Custom Embed Stream player"
+                    />
+                    {/* Hoverable audio assistance tooltip for autoplay security bans */}
+                    <div className="absolute top-1 left-1 right-1 bg-black/90 p-1 px-2 rounded border border-neutral-800 text-[8px] text-neutral-400 select-none pointer-events-none flex items-center justify-between z-10 transition-opacity duration-300">
+                      <span>🔊 Tap iframe/video player once to play & unmute if silent</span>
+                    </div>
+                  </>
                 )}
               </div>
 
