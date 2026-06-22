@@ -73,7 +73,7 @@ async function searchYouTubeDuckDuckGo(query: string): Promise<string | null> {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       }
-    }, 2000);
+    }, 4000);
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:v=|v%3D)([A-Za-z0-9_-]{11})/);
@@ -97,7 +97,7 @@ async function searchYouTubeBing(query: string): Promise<string | null> {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }
-    }, 2000);
+    }, 4000);
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:v=|v%3D)([A-Za-z0-9_-]{11})/);
@@ -132,29 +132,38 @@ async function fetchWithTimeout(url: string, options: any = {}, timeoutMs: numbe
 
 async function searchYouTubeInvidious(query: string): Promise<string | null> {
   const searchQuery = encodeURIComponent(query + " official audio");
-  for (const instance of INVIDIOUS_INSTANCES) {
+  const promises = INVIDIOUS_INSTANCES.map(async (instance) => {
     try {
       const url = `${instance}/api/v1/search?q=${searchQuery}&type=video`;
       const res = await fetchWithTimeout(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         }
-      }, 2500);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          const video = data.find((item: any) => item && (item.type === "video" || item.videoId));
-          if (video && video.videoId) {
-            console.log(`Successfully found Youtube video via Invidious instance ${instance}`);
-            return video.videoId;
-          }
+      }, 4500);
+      if (!res.ok) {
+        throw new Error(`Instance ${instance} returned abort/non-200 status: ${res.status}`);
+      }
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const video = data.find((item: any) => item && (item.type === "video" || item.videoId));
+        if (video && video.videoId) {
+          return { videoId: video.videoId, instance };
         }
       }
+      throw new Error(`No video elements returned in payload from ${instance}`);
     } catch (err: any) {
-      console.warn(`Invidious instance ${instance} fail or aborted:`, err?.message || err);
+      throw err;
     }
+  });
+
+  try {
+    const winner = await Promise.any(promises);
+    console.log(`Successfully found Youtube video via parallel Invidious instance: ${winner.instance}`);
+    return winner.videoId;
+  } catch (err) {
+    console.warn("All parallel Invidious API scraper queries failed:", err);
+    return null;
   }
-  return null;
 }
 
 /**
@@ -169,7 +178,7 @@ async function searchYouTubeMusic(title: string, artist: string): Promise<string
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }
-    }, 2000);
+    }, 4000);
     if (res.ok) {
       const html = await res.text();
       const match = html.match(/(?:v=|v%3D)([A-Za-z0-9_-]{11})/);
@@ -195,7 +204,7 @@ async function searchSoundCloud(title: string, artist: string): Promise<{ url: s
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
       }
-    }, 2000);
+    }, 4000);
     if (res.ok) {
       const html = await res.text();
       // Match soundcloud.com/artist/track links
@@ -230,8 +239,8 @@ async function searchFreeAudioFiles(title: string, artist: string): Promise<Arra
   // Try Archive.org first
   try {
     const queryStr = `${title} ${artist}`;
-    const archiveUrl = `https://archive.org/advancedsearch.php?q=title:(${encodeURIComponent(queryStr)})+AND+mediatype:(audio)&fl[]=identifier,title&sort[]=downloads+desc&output=json&rows=3`;
-    const resArchive = await fetchWithTimeout(archiveUrl, {}, 2000);
+        const archiveUrl = `https://archive.org/advancedsearch.php?q=title:(${encodeURIComponent(queryStr)})+AND+mediatype:(audio)&fl[]=identifier,title&sort[]=downloads+desc&output=json&rows=3`;
+    const resArchive = await fetchWithTimeout(archiveUrl, {}, 5000);
     if (resArchive.ok) {
       const data = await resArchive.json();
       const docs = data?.response?.docs;
@@ -264,7 +273,7 @@ async function searchFreeAudioFiles(title: string, artist: string): Promise<Arra
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       }
-    }, 2000);
+    }, 5000);
     if (res.ok) {
       const html = await res.text();
       const regex = /(https?:\/\/[^\s"'`<>]+?\.(?:mp3|mp4|ogg|wav))/gi;
@@ -335,7 +344,7 @@ async function searchYouTube(query: string): Promise<string | null> {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
       },
-    }, 2000);
+    }, 4500);
     if (res.ok) {
       const html = await res.text();
       
@@ -385,7 +394,7 @@ app.get("/api/music-sources", async (req, res) => {
 
   const sources: any[] = [];
 
-  // Add bulletproof instantaneous Smart Search Playback stream
+  // 1. YouTube Intelligent Search Embed (Bulletproof client-side search fallback)
   sources.push({
     id: "youtube-auto-search",
     name: "YouTube Intelligent Search Embed",
@@ -395,7 +404,37 @@ app.get("/api/music-sources", async (req, res) => {
     icon: "Sparkles"
   });
 
-  // Add standard YouTube video if found
+  // 2. YouTube Music High-Quality (Resilient client-side official music query)
+  sources.push({
+    id: "youtube-music-search",
+    name: "YouTube Music High-Quality Embed",
+    type: "iframe",
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " high fidelity audio lyrics")}&autoplay=1&controls=1`,
+    domain: "music.youtube.com",
+    icon: "Music"
+  });
+
+  // 3. YouTube Live Performance (Exciting alternative client-side live concert query)
+  sources.push({
+    id: "youtube-live-performance",
+    name: "YouTube Live Performance",
+    type: "iframe",
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " live concert performance visualizer")}&autoplay=1&controls=1`,
+    domain: "youtube.com",
+    icon: "Tv"
+  });
+
+  // 4. YouTube Karaoke & Instrumental (Exciting interactive client-side query)
+  sources.push({
+    id: "youtube-karaoke",
+    name: "YouTube Karaoke & Instrumental",
+    type: "iframe",
+    url: `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(query + " karaoke instrumental lyrics")}&autoplay=1&controls=1`,
+    domain: "youtube.com",
+    icon: "Sparkles"
+  });
+
+  // Add standard YouTube video if found (resolves via fast parallel Invidious or Gemini)
   if (youtubeId) {
     sources.push({
       id: "youtube-video",
@@ -414,13 +453,25 @@ app.get("/api/music-sources", async (req, res) => {
       domain: "yewtu.be",
       icon: "ShieldAlert"
     });
+
+    // If youtubeMusicId is not found, we can construct the YouTube Music tab with the resolved youtubeId
+    if (!youtubeMusicId) {
+      sources.push({
+        id: "youtube-music",
+        name: "YouTube Music Stream",
+        type: "iframe",
+        url: `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=1&enablejsapi=1`,
+        domain: "music.youtube.com",
+        icon: "Music"
+      });
+    }
   }
 
   // Add YouTube Music video if found (and different from youtubeId)
   if (youtubeMusicId && youtubeMusicId !== youtubeId) {
     sources.push({
       id: "youtube-music",
-      name: "YouTube Music",
+      name: "YouTube Music Stream",
       type: "iframe",
       url: `https://www.youtube.com/embed/${youtubeMusicId}?autoplay=1&controls=1&enablejsapi=1`,
       domain: "music.youtube.com",
